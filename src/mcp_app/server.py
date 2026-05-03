@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import date
 
 import requests
 from mcp.server.fastmcp import Context, FastMCP
@@ -10,6 +11,7 @@ from mcp.server.session import ServerSession
 
 from core.config import Settings, load_settings
 from services.auth_service import AuthService, IliasAuthError
+from services.calendar_service import CalendarService, IliasCalendarError
 from services.course_service import CourseService, IliasCourseError
 
 logging.basicConfig(level=logging.INFO)
@@ -17,10 +19,17 @@ logger = logging.getLogger(__name__)
 
 
 class AppContext:
-    def __init__(self, settings: Settings, auth_service: AuthService, course_service: CourseService) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        auth_service: AuthService,
+        course_service: CourseService,
+        calendar_service: CalendarService,
+    ) -> None:
         self.settings = settings
         self.auth_service = auth_service
         self.course_service = course_service
+        self.calendar_service = calendar_service
 
 
 @asynccontextmanager
@@ -43,8 +52,14 @@ async def lifespan(_: FastMCP) -> AsyncIterator[AppContext]:
 
     auth_service = AuthService(settings=settings, session=session)
     course_service = CourseService(settings=settings, session=session, auth_service=auth_service)
+    calendar_service = CalendarService(settings=settings, session=session, auth_service=auth_service)
     logger.info("ILIAS MCP server initialized and ready.")
-    yield AppContext(settings=settings, auth_service=auth_service, course_service=course_service)
+    yield AppContext(
+        settings=settings,
+        auth_service=auth_service,
+        course_service=course_service,
+        calendar_service=calendar_service,
+    )
     logger.info("Shutting down ILIAS MCP server.")
 
 
@@ -92,6 +107,37 @@ async def list_courses(ctx: Context[ServerSession, AppContext]) -> dict[str, obj
         "status": "ok",
         "count": len(courses),
         "courses": [{"title": c.title, "url": c.url, "ref_id": c.ref_id} for c in courses],
+    }
+
+
+@mcp.tool()
+async def list_calendar_events(
+    ctx: Context[ServerSession, AppContext],
+    seed: str = "",
+) -> dict[str, object]:
+    """List calendar agenda events for a given day (`YYYY-MM-DD`)."""
+    app = _app(ctx)
+    day = seed.strip() or date.today().isoformat()
+    try:
+        events = app.calendar_service.list_events(day)
+    except (IliasAuthError, IliasCalendarError) as exc:
+        logger.warning("Calendar listing failed: %s", exc)
+        return {"status": "error", "message": str(exc), "seed": day, "events": []}
+
+    return {
+        "status": "ok",
+        "seed": day,
+        "count": len(events),
+        "events": [
+            {
+                "date": event.date_label,
+                "time": event.time_label,
+                "title": event.title,
+                "action_url": event.action_url,
+                "properties": event.properties,
+            }
+            for event in events
+        ],
     }
 
 

@@ -7,6 +7,7 @@ Production-oriented MCP server for ILIAS login and enrolled course listing.
 - `login`: authenticate against ILIAS
 - `list_courses`: list enrolled courses (`title`, `url`, `ref_id`)
 - `server_info`: non-sensitive runtime config
+- `list_calendar_events`: list agenda events for a day (`seed` in `YYYY-MM-DD`)
 
 ## Setup
 

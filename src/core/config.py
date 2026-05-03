@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 import os
+from urllib.parse import urlencode
 
 from dotenv import load_dotenv
 
@@ -27,6 +28,18 @@ class Settings:
     @property
     def memberships_url(self) -> str:
         return f"{self.ilias_base_url}/ilias.php?baseClass=ilmembershipoverviewgui"
+
+    def calendar_url(self, seed: str) -> str:
+        query = urlencode(
+            {
+                "baseClass": "ildashboardgui",
+                "cmdNode": "ai:76:72",
+                "cmdClass": "ilcalendarinboxgui",
+                "seed": seed,
+                "category_id": "0",
+            }
+        )
+        return f"{self.ilias_base_url}/ilias.php?{query}"
 
 
 def load_settings() -> Settings:
