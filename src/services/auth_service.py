@@ -24,7 +24,9 @@ class AuthService:
             return "Already logged in."
 
         try:
-            resp = self.session.get(self.settings.login_page, timeout=self.settings.timeout_seconds)
+            resp = self.session.get(
+                self.settings.login_page, timeout=self.settings.timeout_seconds
+            )
             resp.raise_for_status()
         except requests.RequestException as exc:
             raise IliasAuthError(f"Failed to load login page: {exc}") from exc
@@ -41,7 +43,9 @@ class AuthService:
                 continue
             payload[name] = inp.get("value", "")
 
-        self._inject_credentials(form, payload, self.settings.ilias_user, self.settings.ilias_pass)
+        self._inject_credentials(
+            form, payload, self.settings.ilias_user, self.settings.ilias_pass
+        )
         payload["cmd[doStandardAuthentication]"] = "Anmelden"
 
         action = str(form.get("action", "")).strip()
@@ -58,7 +62,9 @@ class AuthService:
             )
             login_resp.raise_for_status()
 
-            dashboard = self.session.get(self.settings.dashboard_url, timeout=self.settings.timeout_seconds)
+            dashboard = self.session.get(
+                self.settings.dashboard_url, timeout=self.settings.timeout_seconds
+            )
             dashboard.raise_for_status()
         except requests.RequestException as exc:
             raise IliasAuthError(f"Failed during login request flow: {exc}") from exc
@@ -74,7 +80,9 @@ class AuthService:
             self.login()
 
     @staticmethod
-    def _inject_credentials(form: Any, payload: dict[str, Any], user: str, password: str) -> None:
+    def _inject_credentials(
+        form: Any, payload: dict[str, Any], user: str, password: str
+    ) -> None:
         for inp in form.find_all("input"):
             name = inp.get("name")
             input_type = (inp.get("type") or "").lower()

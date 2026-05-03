@@ -15,7 +15,9 @@ class IliasCalendarError(RuntimeError):
 
 
 class CalendarService:
-    def __init__(self, settings: Settings, session: requests.Session, auth_service: AuthService) -> None:
+    def __init__(
+        self, settings: Settings, session: requests.Session, auth_service: AuthService
+    ) -> None:
         self.settings = settings
         self.session = session
         self.auth_service = auth_service
@@ -38,27 +40,43 @@ class CalendarService:
 
         for group in soup.select("div.il-item-group"):
             heading = group.find("h3")
-            date_label = self._clean(heading.get_text(" ", strip=True)) if heading else ""
+            date_label = (
+                self._clean(heading.get_text(" ", strip=True)) if heading else ""
+            )
 
             for item in group.select("li.il-std-item-container"):
                 time_el = item.select_one("div.col-sm-3")
-                time_label = self._clean(time_el.get_text(" ", strip=True)) if time_el else ""
+                time_label = (
+                    self._clean(time_el.get_text(" ", strip=True)) if time_el else ""
+                )
 
                 title_el = item.select_one("h4.il-item-title")
-                title = self._clean(title_el.get_text(" ", strip=True)) if title_el else ""
+                title = (
+                    self._clean(title_el.get_text(" ", strip=True)) if title_el else ""
+                )
                 if not title:
                     continue
 
                 action_url = ""
-                action_btn = title_el.find("button", attrs={"data-action": True}) if title_el else None
+                action_btn = (
+                    title_el.find("button", attrs={"data-action": True})
+                    if title_el
+                    else None
+                )
                 if action_btn:
                     action_url = self._normalize_url(action_btn.get("data-action", ""))
 
                 properties: dict[str, str] = {}
                 for name_el in item.select("span.il-item-property-name"):
-                    value_el = name_el.find_next_sibling("span", class_="il-item-property-value")
+                    value_el = name_el.find_next_sibling(
+                        "span", class_="il-item-property-value"
+                    )
                     name = self._clean(name_el.get_text(" ", strip=True))
-                    value = self._clean(value_el.get_text(" ", strip=True)) if value_el else ""
+                    value = (
+                        self._clean(value_el.get_text(" ", strip=True))
+                        if value_el
+                        else ""
+                    )
                     if name:
                         properties[name] = value
 

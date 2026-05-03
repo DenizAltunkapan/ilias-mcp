@@ -23,7 +23,9 @@ class Settings:
 
     @property
     def dashboard_url(self) -> str:
-        return f"{self.ilias_base_url}/ilias.php?baseClass=ildashboardgui&cmd=show&view=2"
+        return (
+            f"{self.ilias_base_url}/ilias.php?baseClass=ildashboardgui&cmd=show&view=2"
+        )
 
     @property
     def memberships_url(self) -> str:
@@ -47,7 +49,11 @@ def load_settings() -> Settings:
 
     ilias_user = os.getenv("ILIAS_USER", "").strip().strip('"')
     ilias_pass = os.getenv("ILIAS_PASS", "").strip().strip('"')
-    ilias_base_url = os.getenv("ILIAS_BASE_URL", "https://ilias3.uni-stuttgart.de").strip().rstrip("/")
+    ilias_base_url = (
+        os.getenv("ILIAS_BASE_URL", "https://ilias3.uni-stuttgart.de")
+        .strip()
+        .rstrip("/")
+    )
     ilias_client_id = os.getenv("ILIAS_CLIENT_ID", "Uni_Stuttgart").strip()
     lang = os.getenv("ILIAS_LANG", "de").strip() or "de"
 

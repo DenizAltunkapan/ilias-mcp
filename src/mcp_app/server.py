@@ -51,8 +51,12 @@ async def lifespan(_: FastMCP) -> AsyncIterator[AppContext]:
     )
 
     auth_service = AuthService(settings=settings, session=session)
-    course_service = CourseService(settings=settings, session=session, auth_service=auth_service)
-    calendar_service = CalendarService(settings=settings, session=session, auth_service=auth_service)
+    course_service = CourseService(
+        settings=settings, session=session, auth_service=auth_service
+    )
+    calendar_service = CalendarService(
+        settings=settings, session=session, auth_service=auth_service
+    )
     logger.info("ILIAS MCP server initialized and ready.")
     yield AppContext(
         settings=settings,
@@ -106,7 +110,9 @@ async def list_courses(ctx: Context[ServerSession, AppContext]) -> dict[str, obj
     return {
         "status": "ok",
         "count": len(courses),
-        "courses": [{"title": c.title, "url": c.url, "ref_id": c.ref_id} for c in courses],
+        "courses": [
+            {"title": c.title, "url": c.url, "ref_id": c.ref_id} for c in courses
+        ],
     }
 
 

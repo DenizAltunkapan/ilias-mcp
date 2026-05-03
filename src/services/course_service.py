@@ -15,7 +15,9 @@ class IliasCourseError(RuntimeError):
 
 
 class CourseService:
-    def __init__(self, settings: Settings, session: requests.Session, auth_service: AuthService) -> None:
+    def __init__(
+        self, settings: Settings, session: requests.Session, auth_service: AuthService
+    ) -> None:
         self.settings = settings
         self.session = session
         self.auth_service = auth_service
@@ -23,7 +25,9 @@ class CourseService:
     def list_courses(self) -> list[Course]:
         self.auth_service.ensure_logged_in()
         try:
-            resp = self.session.get(self.settings.memberships_url, timeout=self.settings.timeout_seconds)
+            resp = self.session.get(
+                self.settings.memberships_url, timeout=self.settings.timeout_seconds
+            )
             resp.raise_for_status()
         except requests.RequestException as exc:
             raise IliasCourseError(f"Failed to fetch memberships page: {exc}") from exc
@@ -37,12 +41,16 @@ class CourseService:
         if containers:
             for container in containers:
                 for a in container.find_all("a", href=True):
-                    course = self._course_from_link(a.get("href", ""), a.get_text(" ", strip=True))
+                    course = self._course_from_link(
+                        a.get("href", ""), a.get_text(" ", strip=True)
+                    )
                     if course:
                         found.append(course)
         else:
             for a in soup.find_all("a", href=True):
-                course = self._course_from_link(a.get("href", ""), a.get_text(" ", strip=True))
+                course = self._course_from_link(
+                    a.get("href", ""), a.get_text(" ", strip=True)
+                )
                 if course:
                     found.append(course)
 
@@ -61,7 +69,11 @@ class CourseService:
         if len(title) < 3:
             return None
 
-        url = href if href.startswith("http") else urljoin(self.settings.ilias_base_url, href)
+        url = (
+            href
+            if href.startswith("http")
+            else urljoin(self.settings.ilias_base_url, href)
+        )
         ref_id = self._extract_ref_id(url)
         return Course(title=title, url=url, ref_id=ref_id)
 
