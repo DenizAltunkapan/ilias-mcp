@@ -47,7 +47,9 @@ class NewsService:
         items: list[NewsItem] = []
         for section in soup.select(".ilNewsTimelineContentSection"):
             title_node = section.select_one("h4.ilNewsTimelineTruncatedText, h4")
-            title = self._clean(title_node.get_text(" ", strip=True)) if title_node else ""
+            title = (
+                self._clean(title_node.get_text(" ", strip=True)) if title_node else ""
+            )
             if not title:
                 continue
 
@@ -75,7 +77,11 @@ class NewsService:
             )
 
             title_link = self._nearest_link(title_node)
-            url = self._normalize_url(str(title_link.get("href", ""))) if title_link else context_url
+            url = (
+                self._normalize_url(str(title_link.get("href", "")))
+                if title_link
+                else context_url
+            )
             items.append(
                 NewsItem(
                     title=title,
@@ -94,7 +100,9 @@ class NewsService:
         items: list[NewsItem] = []
         for row in soup.select("td.il-news"):
             title_link = row.select_one("h4 a[href]")
-            title = self._clean(title_link.get_text(" ", strip=True)) if title_link else ""
+            title = (
+                self._clean(title_link.get_text(" ", strip=True)) if title_link else ""
+            )
             if not title:
                 continue
 

@@ -279,7 +279,9 @@ class RepositoryService:
                     include_unknown_containers=include_unknown_containers,
                 )
 
-    def _extract_items(self, html: str, current_ref_id: str = "") -> list[RepositoryItem]:
+    def _extract_items(
+        self, html: str, current_ref_id: str = ""
+    ) -> list[RepositoryItem]:
         soup = BeautifulSoup(html, "html.parser")
         items: list[RepositoryItem] = []
 
@@ -308,7 +310,9 @@ class RepositoryService:
                 item = self._item_from_linkish(link, current_ref_id)
                 if item:
                     items.append(item)
-            for button in content_scope.find_all(["button", "a"], attrs={"data-action": True}):
+            for button in content_scope.find_all(
+                ["button", "a"], attrs={"data-action": True}
+            ):
                 item = self._item_from_linkish(button, current_ref_id)
                 if item:
                     items.append(item)
@@ -377,7 +381,9 @@ class RepositoryService:
             "obj_file",
         )
         for node in soup.find_all(["a", "button", "img"], href=True):
-            haystack = " ".join(str(node.get(attr, "")) for attr in ("href", "title", "alt"))
+            haystack = " ".join(
+                str(node.get(attr, "")) for attr in ("href", "title", "alt")
+            )
             if any(needle in haystack.lower() for needle in needles):
                 return True
         for node in soup.find_all(["a", "button"], attrs={"data-action": True}):
@@ -471,11 +477,7 @@ class RepositoryService:
         lower = href.lower()
         if not href or href.startswith("#") or href.startswith("javascript:"):
             return False
-        return (
-            "ref_id=" in lower
-            or "/go/" in lower
-            or "goto.php?target=" in lower
-        )
+        return "ref_id=" in lower or "/go/" in lower or "goto.php?target=" in lower
 
     @staticmethod
     def _is_download_href(href: str) -> bool:
@@ -533,7 +535,11 @@ class RepositoryService:
     def _looks_like_html_page(resp: requests.Response) -> bool:
         content_type = (resp.headers.get("Content-Type") or "").lower()
         head = resp.content[:200].lstrip().lower()
-        return "text/html" in content_type or head.startswith(b"<!doctype html") or head.startswith(b"<html")
+        return (
+            "text/html" in content_type
+            or head.startswith(b"<!doctype html")
+            or head.startswith(b"<html")
+        )
 
     @staticmethod
     def _extract_pdf_text(payload: bytes, max_pdf_pages: int) -> str:
@@ -559,7 +565,9 @@ class RepositoryService:
         cleaned = re.sub(r"\s+", " ", cleaned)
         return cleaned[:160] or "untitled"
 
-    def _filename_from_response(self, resp: requests.Response, fallback_title: str) -> str:
+    def _filename_from_response(
+        self, resp: requests.Response, fallback_title: str
+    ) -> str:
         disposition = resp.headers.get("Content-Disposition", "")
         filename = self._filename_from_content_disposition(disposition)
         if filename:
