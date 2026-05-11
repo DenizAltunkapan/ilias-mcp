@@ -108,8 +108,7 @@ class RepositoryService:
 
         root_details = self.get_item_details(ref_id)
         file_url = root_details.get("file_url", "")
-        # Only treat the root as a single file when the download URL refers to THIS
-        # ref_id — a folder page may expose a download link for a contained file.
+        # Folder pages can expose download links for contained files.
         if file_url and self._extract_ref_id(file_url) == ref_id:
             file = self.download_file(
                 ref_id=ref_id,
@@ -285,7 +284,7 @@ class RepositoryService:
         soup = BeautifulSoup(html, "html.parser")
         items: list[RepositoryItem] = []
 
-        # Scope to main content area to avoid sidebar/breadcrumb navigation links.
+        # Avoid sidebar and breadcrumb links outside the repository content.
         content_scope: BeautifulSoup | Tag = (
             soup.select_one("#ilContentContainer")
             or soup.select_one("#il_center_col")
@@ -303,8 +302,6 @@ class RepositoryService:
             if item:
                 items.append(item)
 
-        # Fallback for compact or customized layouts: only when primary scan found
-        # nothing, already scoped to content area above.
         if not items:
             for link in content_scope.find_all(["a", "button"], href=True):
                 item = self._item_from_linkish(link, current_ref_id)

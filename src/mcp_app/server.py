@@ -392,11 +392,7 @@ async def list_dashboard_news(
 
 @mcp.resource("ilias://courses")
 async def courses_resource(ctx: Context[ServerSession, AppContext]) -> str:
-    """All enrolled ILIAS courses as a context document (read-only, no side-effects).
-
-    Use this as background context when the user asks about their courses without
-    needing a full tool call. Tools like list_repository_items still require a ref_id.
-    """
+    """All enrolled ILIAS courses as a context document."""
     app = _app(ctx)
     try:
         app.auth_service.ensure_logged_in()
@@ -415,12 +411,7 @@ async def courses_resource(ctx: Context[ServerSession, AppContext]) -> str:
 
 @mcp.resource("ilias://calendar/{seed}")
 async def calendar_resource(ctx: Context[ServerSession, AppContext], seed: str) -> str:
-    """ILIAS calendar events for a given day as a context document (format: YYYY-MM-DD).
-
-    Prefer this over list_calendar_events when you only need to read the schedule
-    passively. The tool variant is better when you need structured data for follow-up
-    tool calls.
-    """
+    """ILIAS calendar events for a given day as a context document."""
     app = _app(ctx)
     day = seed.strip() or date.today().isoformat()
     try:

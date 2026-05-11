@@ -80,10 +80,6 @@ class CalendarService:
                     if name:
                         properties[name] = value
 
-                if not action_url and "Course" in properties:
-                    # no dedicated title action link available; keep empty string
-                    action_url = ""
-
                 events.append(
                     CalendarEvent(
                         date_label=date_label,
