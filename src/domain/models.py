@@ -15,3 +15,44 @@ class CalendarEvent:
     title: str
     action_url: str
     properties: dict[str, str]
+
+
+@dataclass(frozen=True)
+class RepositoryItem:
+    title: str
+    item_type: str
+    url: str
+    ref_id: str
+
+
+@dataclass(frozen=True)
+class FileContent:
+    ref_id: str
+    title: str
+    file_url: str
+    content_type: str
+    text: str
+    parsed_with: str
+
+
+@dataclass(frozen=True)
+class DownloadedFile:
+    ref_id: str
+    title: str
+    file_url: str
+    local_path: str
+    content_type: str
+    size_bytes: int
+    status: str
+
+
+@dataclass(frozen=True)
+class NewsItem:
+    title: str
+    content: str
+    context_title: str
+    context_url: str
+    ref_id: str
+    author: str
+    date_label: str
+    url: str

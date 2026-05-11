@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 import os
+from pathlib import Path
 from urllib.parse import urlencode
 
 from dotenv import load_dotenv
@@ -13,6 +14,7 @@ class Settings:
     ilias_client_id: str
     lang: str = "de"
     timeout_seconds: int = 20
+    download_dir: str = str(Path.home() / "Downloads" / "ilias-mcp")
 
     @property
     def login_page(self) -> str:
@@ -43,6 +45,17 @@ class Settings:
         )
         return f"{self.ilias_base_url}/ilias.php?{query}"
 
+    @property
+    def dashboard_news_url(self) -> str:
+        query = urlencode(
+            {
+                "baseClass": "ildashboardgui",
+                "cmdNode": "ai:ve",
+                "cmdClass": "ilPDNewsGUI",
+            }
+        )
+        return f"{self.ilias_base_url}/ilias.php?{query}"
+
 
 def load_settings() -> Settings:
     load_dotenv()
@@ -63,6 +76,12 @@ def load_settings() -> Settings:
     except ValueError:
         timeout_seconds = 20
 
+    download_dir = (
+        os.getenv("ILIAS_DOWNLOAD_DIR", str(Path.home() / "Downloads" / "ilias-mcp"))
+        .strip()
+        .strip('"')
+    )
+
     if not ilias_user:
         raise ValueError("Missing ILIAS_USER in .env")
     if not ilias_pass:
@@ -75,4 +94,5 @@ def load_settings() -> Settings:
         ilias_client_id=ilias_client_id,
         lang=lang,
         timeout_seconds=timeout_seconds,
+        download_dir=download_dir,
     )
