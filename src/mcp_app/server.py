@@ -14,6 +14,7 @@ from services.auth_service import AuthService, IliasAuthError
 from services.calendar_service import CalendarService, IliasCalendarError
 from services.course_service import CourseService, IliasCourseError
 from services.news_service import IliasNewsError, NewsService
+from services.exercise_service import ExerciseService, IliasExerciseError
 from services.repository_service import IliasRepositoryError, RepositoryService
 
 logging.basicConfig(level=logging.INFO)
@@ -29,6 +30,7 @@ class AppContext:
         calendar_service: CalendarService,
         news_service: NewsService,
         repository_service: RepositoryService,
+        exercise_service: ExerciseService,
     ) -> None:
         self.settings = settings
         self.auth_service = auth_service
@@ -36,6 +38,7 @@ class AppContext:
         self.calendar_service = calendar_service
         self.news_service = news_service
         self.repository_service = repository_service
+        self.exercise_service = exercise_service
 
 
 @asynccontextmanager
@@ -69,6 +72,9 @@ async def lifespan(_: FastMCP) -> AsyncIterator[AppContext]:
     repository_service = RepositoryService(
         settings=settings, session=session, auth_service=auth_service
     )
+    exercise_service = ExerciseService(
+        settings=settings, session=session, auth_service=auth_service
+    )
     logger.info("ILIAS MCP server initialized and ready.")
     yield AppContext(
         settings=settings,
@@ -77,6 +83,7 @@ async def lifespan(_: FastMCP) -> AsyncIterator[AppContext]:
         calendar_service=calendar_service,
         news_service=news_service,
         repository_service=repository_service,
+        exercise_service=exercise_service,
     )
     logger.info("Shutting down ILIAS MCP server.")
 
@@ -388,6 +395,200 @@ async def list_dashboard_news(
             for item in news
         ],
     }
+
+
+@mcp.tool()
+async def list_exercise_assignments(
+    ctx: Context[ServerSession, AppContext],
+    ref_id: str,
+) -> dict[str, object]:
+    """List all assignments (Übungsblätter) for an ILIAS exercise object by ref_id."""
+    app = _app(ctx)
+    try:
+        assignments = app.exercise_service.list_assignments(ref_id=ref_id)
+    except (IliasAuthError, IliasExerciseError) as exc:
+        logger.warning("Exercise listing failed for ref_id=%s: %s", ref_id, exc)
+        return {"status": "error", "message": str(exc), "ref_id": ref_id, "assignments": []}
+
+    return {
+        "status": "ok",
+        "ref_id": ref_id,
+        "count": len(assignments),
+        "assignments": [
+            {"ass_id": a.ass_id, "title": a.title, "deadline": a.deadline, "status": a.status}
+            for a in assignments
+        ],
+    }
+
+
+@mcp.tool()
+async def submit_exercise_file(
+    ctx: Context[ServerSession, AppContext],
+    ref_id: str,
+    ass_id: str,
+    local_path: str,
+) -> dict[str, object]:
+    """Upload a local file as a submission for an ILIAS exercise assignment.
+
+    ref_id: ref_id of the exercise object (e.g. Abgabe-Gruppe).
+    ass_id: assignment ID obtained from list_exercise_assignments.
+    local_path: absolute or home-relative path to the file to upload.
+    """
+    app = _app(ctx)
+    try:
+        result = app.exercise_service.submit_file(
+            ref_id=ref_id, ass_id=ass_id, local_path=local_path
+        )
+    except (IliasAuthError, IliasExerciseError, OSError) as exc:
+        logger.warning(
+            "Exercise submission failed for ref_id=%s ass_id=%s: %s", ref_id, ass_id, exc
+        )
+        return {"status": "error", "message": str(exc)}
+
+    return {"status": "ok", **result}
+
+
+@mcp.tool()
+async def list_submitted_files(
+    ctx: Context[ServerSession, AppContext],
+    ref_id: str,
+    ass_id: str,
+) -> dict[str, object]:
+    """List all files already submitted for an exercise assignment, with their delivery IDs."""
+    app = _app(ctx)
+    try:
+        files = app.exercise_service.list_submitted_files(ref_id=ref_id, ass_id=ass_id)
+    except (IliasAuthError, IliasExerciseError) as exc:
+        logger.warning("List submitted files failed for ref_id=%s ass_id=%s: %s", ref_id, ass_id, exc)
+        return {"status": "error", "message": str(exc), "files": []}
+    return {"status": "ok", "ref_id": ref_id, "ass_id": ass_id, "count": len(files), "files": files}
+
+
+@mcp.tool()
+async def delete_submitted_files(
+    ctx: Context[ServerSession, AppContext],
+    ref_id: str,
+    ass_id: str,
+    delivery_ids: list[str],
+) -> dict[str, object]:
+    """Delete one or more submitted files by their delivery_id (from list_submitted_files).
+
+    delivery_ids: list of delivery_id strings to delete.
+    """
+    app = _app(ctx)
+    try:
+        result = app.exercise_service.delete_submitted_files(
+            ref_id=ref_id, ass_id=ass_id, delivery_ids=delivery_ids
+        )
+    except (IliasAuthError, IliasExerciseError) as exc:
+        logger.warning("Delete submitted files failed for ref_id=%s ass_id=%s: %s", ref_id, ass_id, exc)
+        return {"status": "error", "message": str(exc)}
+    return {"status": "ok", **result}
+
+
+@mcp.tool()
+async def list_team_members(
+    ctx: Context[ServerSession, AppContext],
+    ref_id: str,
+    ass_id: str,
+) -> dict[str, object]:
+    """List current team members for an exercise assignment submission team."""
+    app = _app(ctx)
+    try:
+        members = app.exercise_service.list_team_members(ref_id=ref_id, ass_id=ass_id)
+    except (IliasAuthError, IliasExerciseError) as exc:
+        logger.warning(
+            "Team listing failed for ref_id=%s ass_id=%s: %s", ref_id, ass_id, exc
+        )
+        return {"status": "error", "message": str(exc), "members": []}
+
+    return {
+        "status": "ok",
+        "ref_id": ref_id,
+        "ass_id": ass_id,
+        "count": len(members),
+        "members": [{"user_id": m.user_id, "name": m.name} for m in members],
+    }
+
+
+@mcp.tool()
+async def search_users(
+    ctx: Context[ServerSession, AppContext],
+    ref_id: str,
+    ass_id: str,
+    term: str,
+) -> dict[str, object]:
+    """Search ILIAS users by name or login fragment (e.g. 'Knaup', 'Dominik').
+
+    Returns login names that can be passed to add_team_member.
+    """
+    app = _app(ctx)
+    try:
+        results = app.exercise_service.search_users(ref_id=ref_id, ass_id=ass_id, term=term)
+    except (IliasAuthError, IliasExerciseError) as exc:
+        logger.warning("User search failed term=%s: %s", term, exc)
+        return {"status": "error", "message": str(exc), "results": []}
+    return {"status": "ok", "term": term, "count": len(results), "results": results}
+
+
+@mcp.tool()
+async def add_team_member(
+    ctx: Context[ServerSession, AppContext],
+    ref_id: str,
+    ass_id: str,
+    username: str,
+) -> dict[str, object]:
+    """Add a user to the submission team by their ILIAS login name (e.g. st123456).
+
+    ref_id: ref_id of the exercise object.
+    ass_id: assignment ID from list_exercise_assignments.
+    username: ILIAS login name of the person to add.
+    """
+    app = _app(ctx)
+    try:
+        result = app.exercise_service.add_team_member(
+            ref_id=ref_id, ass_id=ass_id, username=username
+        )
+    except (IliasAuthError, IliasExerciseError) as exc:
+        logger.warning(
+            "Add team member failed for ref_id=%s ass_id=%s user=%s: %s",
+            ref_id,
+            ass_id,
+            username,
+            exc,
+        )
+        return {"status": "error", "message": str(exc)}
+
+    return {"status": "ok", **result}
+
+
+@mcp.tool()
+async def remove_team_member(
+    ctx: Context[ServerSession, AppContext],
+    ref_id: str,
+    ass_id: str,
+    user_id: str,
+) -> dict[str, object]:
+    """Remove a user from the submission team by their ILIAS user_id.
+
+    user_id can be obtained from list_team_members.
+    """
+    app = _app(ctx)
+    try:
+        result = app.exercise_service.remove_team_member(
+            ref_id=ref_id, ass_id=ass_id, user_id=user_id
+        )
+    except (IliasAuthError, IliasExerciseError) as exc:
+        logger.warning(
+            "Remove team member failed for ref_id=%s ass_id=%s user_id=%s: %s",
+            ref_id,
+            ass_id,
+            user_id,
+            exc,
+        )
+        return {"status": "error", "message": str(exc)}
+
+    return {"status": "ok", **result}
 
 
 @mcp.resource("ilias://courses")
