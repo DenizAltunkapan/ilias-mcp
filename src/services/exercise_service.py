@@ -86,7 +86,6 @@ class ExerciseService:
         file_id = self._dropzone_upload(upload_handler_url, path)
 
         # Step 3: POST form with the returned identifier
-        rtoken = self._extract_rtoken(submit_url)
         payload = {input_name: file_id}
         post_resp = self.session.post(
             urljoin(self.settings.ilias_base_url + "/", submit_url),
