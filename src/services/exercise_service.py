@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from urllib.parse import urlencode, urljoin, urlparse, parse_qs
+from urllib.parse import urljoin, urlparse, parse_qs
 
 import requests
 from bs4 import BeautifulSoup
 
 from core.config import Settings
-from domain.models import ExerciseAssignment, SubmittedFile, TeamMember
+from domain.models import ExerciseAssignment, TeamMember
 from services.auth_service import AuthService
 
 
