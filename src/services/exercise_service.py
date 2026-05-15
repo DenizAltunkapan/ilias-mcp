@@ -32,9 +32,7 @@ class ExerciseService:
         resp = self._get(url, f"exercise overview {ref_id}")
         return self._extract_assignments(resp.text, ref_id)
 
-    def _extract_assignments(
-        self, html: str, ref_id: str
-    ) -> list[ExerciseAssignment]:
+    def _extract_assignments(self, html: str, ref_id: str) -> list[ExerciseAssignment]:
         soup = BeautifulSoup(html, "html.parser")
         assignments: list[ExerciseAssignment] = []
         seen: set[str] = set()
@@ -70,9 +68,7 @@ class ExerciseService:
 
     # File submission
 
-    def submit_file(
-        self, ref_id: str, ass_id: str, local_path: str
-    ) -> dict[str, str]:
+    def submit_file(self, ref_id: str, ass_id: str, local_path: str) -> dict[str, str]:
         """Upload a local file as an exercise submission."""
         self.auth_service.ensure_logged_in()
         path = Path(local_path).expanduser().resolve()
@@ -133,9 +129,7 @@ class ExerciseService:
             html,
         )
         if m:
-            upload_handler_url = urljoin(
-                self.settings.ilias_base_url + "/", m.group(1)
-            )
+            upload_handler_url = urljoin(self.settings.ilias_base_url + "/", m.group(1))
 
         if not upload_handler_url:
             raise IliasExerciseError(
@@ -194,7 +188,9 @@ class ExerciseService:
         url = self._submission_screen_url(ref_id, ass_id)
         page_resp = self._get(url, f"submission screen {ref_id}/{ass_id}")
 
-        form_action = self._extract_submission_form_action(page_resp.text, ref_id, ass_id)
+        form_action = self._extract_submission_form_action(
+            page_resp.text, ref_id, ass_id
+        )
 
         # Step 1: confirmDeleteDelivered → shows confirmation page
         payload: list[tuple[str, str]] = [("delivered[]", did) for did in delivery_ids]
@@ -261,7 +257,12 @@ class ExerciseService:
                 elif len(texts) == 3:
                     name, submitter, date = texts[0], texts[1], texts[2]
             files.append(
-                {"delivery_id": delivery_id, "filename": name, "submitter": submitter, "date": date}
+                {
+                    "delivery_id": delivery_id,
+                    "filename": name,
+                    "submitter": submitter,
+                    "date": date,
+                }
             )
         return files
 
@@ -294,14 +295,18 @@ class ExerciseService:
         try:
             data = resp.json()
         except Exception as exc:
-            raise IliasExerciseError(f"Autocomplete response not JSON: {resp.text[:200]}") from exc
+            raise IliasExerciseError(
+                f"Autocomplete response not JSON: {resp.text[:200]}"
+            ) from exc
         results = []
         for item in data.get("items", {}).values():
-            results.append({
-                "login": str(item.get("value", "")),
-                "label": str(item.get("label", "")),
-                "user_id": str(item.get("id", "")),
-            })
+            results.append(
+                {
+                    "login": str(item.get("value", "")),
+                    "label": str(item.get("label", "")),
+                    "user_id": str(item.get("id", "")),
+                }
+            )
         return results
 
     def _autocomplete_url(self, ref_id: str, ass_id: str) -> str:
@@ -328,11 +333,15 @@ class ExerciseService:
         resp = self._get(url, f"team screen {ref_id}/{ass_id}")
         return self._extract_team_members(resp.text)
 
-    def add_team_member(self, ref_id: str, ass_id: str, username: str) -> dict[str, str]:
+    def add_team_member(
+        self, ref_id: str, ass_id: str, username: str
+    ) -> dict[str, str]:
         self.auth_service.ensure_logged_in()
         team_url = self._team_url(ref_id, ass_id)
         page_resp = self._get(team_url, f"team page {ref_id}/{ass_id}")
-        post_url, rtoken = self._team_post_url_and_rtoken(page_resp.text, ref_id, ass_id)
+        post_url, rtoken = self._team_post_url_and_rtoken(
+            page_resp.text, ref_id, ass_id
+        )
 
         payload = {
             "user_login": username,
@@ -362,7 +371,9 @@ class ExerciseService:
         self.auth_service.ensure_logged_in()
         team_url = self._team_url(ref_id, ass_id)
         page_resp = self._get(team_url, f"team page {ref_id}/{ass_id}")
-        post_url, rtoken = self._team_post_url_and_rtoken(page_resp.text, ref_id, ass_id)
+        post_url, rtoken = self._team_post_url_and_rtoken(
+            page_resp.text, ref_id, ass_id
+        )
 
         payload = {
             "id[]": user_id,

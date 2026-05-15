@@ -408,14 +408,24 @@ async def list_exercise_assignments(
         assignments = app.exercise_service.list_assignments(ref_id=ref_id)
     except (IliasAuthError, IliasExerciseError) as exc:
         logger.warning("Exercise listing failed for ref_id=%s: %s", ref_id, exc)
-        return {"status": "error", "message": str(exc), "ref_id": ref_id, "assignments": []}
+        return {
+            "status": "error",
+            "message": str(exc),
+            "ref_id": ref_id,
+            "assignments": [],
+        }
 
     return {
         "status": "ok",
         "ref_id": ref_id,
         "count": len(assignments),
         "assignments": [
-            {"ass_id": a.ass_id, "title": a.title, "deadline": a.deadline, "status": a.status}
+            {
+                "ass_id": a.ass_id,
+                "title": a.title,
+                "deadline": a.deadline,
+                "status": a.status,
+            }
             for a in assignments
         ],
     }
@@ -441,7 +451,10 @@ async def submit_exercise_file(
         )
     except (IliasAuthError, IliasExerciseError, OSError) as exc:
         logger.warning(
-            "Exercise submission failed for ref_id=%s ass_id=%s: %s", ref_id, ass_id, exc
+            "Exercise submission failed for ref_id=%s ass_id=%s: %s",
+            ref_id,
+            ass_id,
+            exc,
         )
         return {"status": "error", "message": str(exc)}
 
@@ -459,9 +472,20 @@ async def list_submitted_files(
     try:
         files = app.exercise_service.list_submitted_files(ref_id=ref_id, ass_id=ass_id)
     except (IliasAuthError, IliasExerciseError) as exc:
-        logger.warning("List submitted files failed for ref_id=%s ass_id=%s: %s", ref_id, ass_id, exc)
+        logger.warning(
+            "List submitted files failed for ref_id=%s ass_id=%s: %s",
+            ref_id,
+            ass_id,
+            exc,
+        )
         return {"status": "error", "message": str(exc), "files": []}
-    return {"status": "ok", "ref_id": ref_id, "ass_id": ass_id, "count": len(files), "files": files}
+    return {
+        "status": "ok",
+        "ref_id": ref_id,
+        "ass_id": ass_id,
+        "count": len(files),
+        "files": files,
+    }
 
 
 @mcp.tool()
@@ -481,7 +505,12 @@ async def delete_submitted_files(
             ref_id=ref_id, ass_id=ass_id, delivery_ids=delivery_ids
         )
     except (IliasAuthError, IliasExerciseError) as exc:
-        logger.warning("Delete submitted files failed for ref_id=%s ass_id=%s: %s", ref_id, ass_id, exc)
+        logger.warning(
+            "Delete submitted files failed for ref_id=%s ass_id=%s: %s",
+            ref_id,
+            ass_id,
+            exc,
+        )
         return {"status": "error", "message": str(exc)}
     return {"status": "ok", **result}
 
@@ -524,7 +553,9 @@ async def search_users(
     """
     app = _app(ctx)
     try:
-        results = app.exercise_service.search_users(ref_id=ref_id, ass_id=ass_id, term=term)
+        results = app.exercise_service.search_users(
+            ref_id=ref_id, ass_id=ass_id, term=term
+        )
     except (IliasAuthError, IliasExerciseError) as exc:
         logger.warning("User search failed term=%s: %s", term, exc)
         return {"status": "error", "message": str(exc), "results": []}
