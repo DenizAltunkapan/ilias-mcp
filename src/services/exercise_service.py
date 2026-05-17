@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from html import unescape
 from pathlib import Path
 from urllib.parse import urljoin, urlparse, parse_qs
 
@@ -272,12 +273,13 @@ class ExerciseService:
             f"&cmd=showOverview&ref_id={ref_id}&ass_id={ass_id}&from_overview=1"
         )
         resp = self._get(assign_url, f"assignment page {ref_id}/{ass_id}")
-        m = re.search(
-            r"ilias\.php\?[^'\"]*cmdClass=ilExSubmissionFileGUI&cmd=submissionScreen[^'\"]*",
+        screen_raw = self._find_url_with_ass_id(
             resp.text,
+            r"ilias\.php\?[^'\"]*cmdClass=ilExSubmissionFileGUI&cmd=submissionScreen[^'\"]*",
+            ass_id,
         )
-        if m:
-            return urljoin(self.settings.ilias_base_url + "/", m.group(0))
+        if screen_raw:
+            return urljoin(self.settings.ilias_base_url + "/", screen_raw)
         return (
             f"{self.settings.ilias_base_url}/ilias.php"
             f"?baseClass=ilrepositorygui&cmdClass=ilExSubmissionFileGUI"
@@ -449,16 +451,18 @@ class ExerciseService:
         )
         assign_resp = self._get(assign_url, f"assignment page {ref_id}/{ass_id}")
 
-        # Find submission screen URL in the assignment page
-        m = re.search(
-            r"ilias\.php\?[^'\"]*cmdClass=ilExSubmissionFileGUI&cmd=submissionScreen[^'\"]*",
+        # Find submission screen URL matching the correct ass_id (the page may
+        # contain links to other assignments' screens — pick the right one).
+        screen_raw = self._find_url_with_ass_id(
             assign_resp.text,
+            r"ilias\.php\?[^'\"]*cmdClass=ilExSubmissionFileGUI&cmd=submissionScreen[^'\"]*",
+            ass_id,
         )
-        if not m:
+        if not screen_raw:
             raise IliasExerciseError(
                 f"Could not find submissionScreen URL for ref_id={ref_id}, ass_id={ass_id}"
             )
-        screen_url = urljoin(self.settings.ilias_base_url + "/", m.group(0))
+        screen_url = urljoin(self.settings.ilias_base_url + "/", screen_raw)
         screen_resp = self._get(screen_url, f"submission screen {ref_id}/{ass_id}")
 
         m2 = re.search(
@@ -478,17 +482,28 @@ class ExerciseService:
             f"&cmd=showOverview&ref_id={ref_id}&ass_id={ass_id}&from_overview=1"
         )
         resp = self._get(assign_url, f"assignment page {ref_id}/{ass_id}")
-        m = re.search(
-            r"ilias\.php\?[^'\"]*cmdClass=ilExSubmissionTeamGUI&cmd=submissionScreenTeam[^'\"]*",
+        team_raw = self._find_url_with_ass_id(
             resp.text,
+            r"ilias\.php\?[^'\"]*cmdClass=ilExSubmissionTeamGUI&cmd=submissionScreenTeam[^'\"]*",
+            ass_id,
         )
-        if m:
-            return urljoin(self.settings.ilias_base_url + "/", m.group(0))
+        if team_raw:
+            return urljoin(self.settings.ilias_base_url + "/", team_raw)
         return (
             f"{self.settings.ilias_base_url}/ilias.php"
             f"?baseClass=ilrepositorygui&cmdClass=ilExSubmissionTeamGUI"
             f"&cmd=submissionScreenTeam&ref_id={ref_id}&ass_id={ass_id}"
         )
+
+    @staticmethod
+    def _find_url_with_ass_id(html: str, pattern: str, ass_id: str) -> str:
+        """Return first regex match with the requested ass_id, else first match."""
+        matches = [unescape(match) for match in re.findall(pattern, html)]
+        for url in matches:
+            qs = parse_qs(urlparse(url).query)
+            if qs.get("ass_id", [""])[0] == ass_id:
+                return url
+        return matches[0] if matches else ""
 
     @staticmethod
     def _extract_rtoken(url: str) -> str:
