@@ -56,3 +56,24 @@ class NewsItem:
     author: str
     date_label: str
     url: str
+
+
+@dataclass(frozen=True)
+class ExerciseAssignment:
+    ass_id: str
+    title: str
+    deadline: str
+    status: str
+
+
+@dataclass(frozen=True)
+class SubmittedFile:
+    filename: str
+    size: str
+    date: str
+
+
+@dataclass(frozen=True)
+class TeamMember:
+    user_id: str
+    name: str
