@@ -39,6 +39,13 @@ Production-oriented MCP server for ILIAS login, enrolled course listing, dashboa
 
 ![ILIAS MCP tools demo](assets/ilias-mcp-tools-demo.png)
 
+The demo shows this MCP server being used from Claude Code with authorized
+access to a user's own ILIAS courses. The final prompt about downloading
+assignment PDFs is included only as a capability demonstration; any actual use
+must respect copyright, course rules, and the permissions granted for the
+material. It must not be read as encouragement to scrape ILIAS, perform mass
+downloads, or create unnecessary load on university infrastructure.
+
 ## Setup
 
 ```bash
@@ -48,13 +55,9 @@ pip install -e .
 cp .env.example .env
 ```
 
-Edit `.env` and set your credentials.
-
-Optional:
-
-```bash
-ILIAS_DOWNLOAD_DIR=~/Downloads/ilias-mcp
-```
+Edit [.env.example](.env.example) / `.env` and set your credentials.
+`ILIAS_DOWNLOAD_DIR` is optional and controls where `download_file` and
+`download_repository_files` store files locally.
 
 ## Run
 
@@ -71,3 +74,16 @@ ilias-mcp
 - Start with [list_courses](#list_courses), then call [crawl_repository](#crawl_repository) or [download_repository_files](#download_repository_files) with the course ref ID.
 - For exercise submission: use [list_exercise_assignments](#list_exercise_assignments) to get `ass_id` values, then [submit_exercise_file](#submit_exercise_file) with the local file path.
 - For team management: use [search_users](#search_users) to find a teammate's login name, then [add_team_member](#add_team_member).
+
+## ❗ Responsible Use ❗
+
+Use this server only for your **own legitimate and authorized course access**.
+Do not use it for **denial-of-service behavior**, **excessive automated
+requests**, **mass downloads**, **high-frequency polling**, or any other activity
+that could create **unnecessary load on ILIAS**, disrupt university
+infrastructure, or violate university rules.
+
+Course material such as **slides, exercise sheets, submissions**, and other
+**personal or copyrighted data** must not be shared, republished, uploaded
+elsewhere, or used outside the intended course context without the required
+permission.
