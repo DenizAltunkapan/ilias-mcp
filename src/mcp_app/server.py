@@ -547,7 +547,7 @@ async def search_users(
     ass_id: str,
     term: str,
 ) -> dict[str, object]:
-    """Search ILIAS users by name or login fragment (e.g. 'Knaup', 'Dominik').
+    """Search ILIAS users by name or login fragment.
 
     Returns login names that can be passed to add_team_member.
     """

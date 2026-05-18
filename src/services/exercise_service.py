@@ -497,13 +497,23 @@ class ExerciseService:
 
     @staticmethod
     def _find_url_with_ass_id(html: str, pattern: str, ass_id: str) -> str:
-        """Return first regex match with the requested ass_id, else first match."""
+        """Return first regex match with the requested ass_id.
+
+        If no exact match exists but other matches do, reuse the cmdNode from
+        the first match and substitute the correct ass_id.  ILIAS sometimes
+        omits links for locked/past assignments from the overview page, so the
+        fallback avoids silently routing requests to the wrong assignment.
+        """
         matches = [unescape(match) for match in re.findall(pattern, html)]
         for url in matches:
             qs = parse_qs(urlparse(url).query)
             if qs.get("ass_id", [""])[0] == ass_id:
                 return url
-        return matches[0] if matches else ""
+        if not matches:
+            return ""
+        # Substitute the correct ass_id into the first match
+        first = matches[0]
+        return re.sub(r"(ass_id=)\d+", rf"\g<1>{ass_id}", first)
 
     @staticmethod
     def _extract_rtoken(url: str) -> str:
