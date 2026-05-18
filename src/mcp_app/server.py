@@ -391,9 +391,9 @@ async def list_dashboard_news(
 
 
 @mcp.resource("ilias://courses")
-async def courses_resource(ctx: Context[ServerSession, AppContext]) -> str:
+async def courses_resource() -> str:
     """All enrolled ILIAS courses as a context document."""
-    app = _app(ctx)
+    app = _app(mcp.get_context())
     try:
         app.auth_service.ensure_logged_in()
         courses = app.course_service.list_courses()
@@ -409,30 +409,71 @@ async def courses_resource(ctx: Context[ServerSession, AppContext]) -> str:
     return "\n".join(lines)
 
 
-@mcp.resource("ilias://calendar/{seed}")
-async def calendar_resource(ctx: Context[ServerSession, AppContext], seed: str) -> str:
-    """ILIAS calendar events for a given day as a context document."""
-    app = _app(ctx)
-    day = seed.strip() or date.today().isoformat()
-    try:
-        app.auth_service.ensure_logged_in()
-        events = app.calendar_service.list_events(day)
-    except (IliasAuthError, IliasCalendarError) as exc:
-        return f"Error fetching calendar for {day}: {exc}"
+@mcp.prompt(
+    title="Summarize latest course lecture",
+    description=(
+        "Summarize the latest lecture for a course and relate it to recent "
+        "exercise sheets."
+    ),
+)
+def summarize_latest_course_lecture(
+    course_name: str,
+    course_ref_id: str = "",
+    lecture_hint: str = "",
+    exercise_hint: str = "",
+) -> str:
+    """Create a reusable study prompt for the latest lecture of a course."""
+    course_selector = (
+        f"Use the course with ref_id `{course_ref_id}`."
+        if course_ref_id.strip()
+        else f"Find the course by the name `{course_name}`."
+    )
+    lecture_selector = (
+        f"If multiple lecture files could match, prefer material matching this hint: `{lecture_hint}`."
+        if lecture_hint.strip()
+        else "Identify the latest lecture from dates, order, filenames, or folder structure."
+    )
+    exercise_selector = (
+        f"When looking at exercise sheets, especially consider this hint: `{exercise_hint}`."
+        if exercise_hint.strip()
+        else "Identify the newest exercise sheets from dates, deadlines, order, filenames, or folder structure."
+    )
 
-    if not events:
-        return f"No events found for {day}."
+    return f"""
+Summarize the latest lecture for the course `{course_name}`.
 
-    lines = [f"# ILIAS Calendar — {day}\n"]
-    for ev in events:
-        time_info = f"{ev.date_label} {ev.time_label}".strip()
-        lines.append(f"## {ev.title}")
-        if time_info:
-            lines.append(f"**When:** {time_info}")
-        for key, val in ev.properties.items():
-            lines.append(f"**{key}:** {val}")
-        lines.append("")
-    return "\n".join(lines)
+Use the ILIAS MCP server:
+1. Call `login` first.
+2. {course_selector}
+3. Use `list_courses`, `crawl_repository`, `list_repository_items`, `get_repository_item_details`, and `get_file_content` to find and read the relevant lecture material.
+4. {lecture_selector}
+5. Search the same course for the newest exercise sheets. Use repository files and, if an exercise object exists, `list_exercise_assignments`.
+6. {exercise_selector}
+
+Answer in the same language as the current conversation with the user. Do not choose the response language based on this prompt being written in English.
+
+Use this structure:
+
+## Table of Contents
+First list the core topics of the latest lecture. Explain each topic directly in 2-4 sentences, not just as a keyword.
+
+## Latest Lecture Summary
+Summarize the lecture precisely. Put definitions, theorems, examples, and proof ideas into a clear conceptual order.
+
+## Relevant Formulas
+List the important formulas, equations, algorithms, or calculation rules. Explain the meaning of the variables and when each formula is used.
+
+## Exam Relevance
+Assess which content is likely to be relevant for the exam. Justify the assessment using the lecture material and the newest exercise sheets.
+
+## Exercise Relevance
+Show which topics are directly needed for current or newest exercise sheets. Refer to concrete sheet or task titles when they are identifiable from the material.
+
+## Study Plan
+Give a short prioritized study order for this material.
+
+If you cannot clearly identify the latest lecture or the newest exercise sheets, say so transparently and name the heuristic you used.
+""".strip()
 
 
 def main() -> None:
