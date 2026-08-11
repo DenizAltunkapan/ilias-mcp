@@ -4,6 +4,7 @@ import re
 from email.message import Message
 from io import BytesIO
 from pathlib import Path
+from typing import ClassVar
 from urllib.parse import parse_qs, unquote, urljoin, urlparse
 
 import requests
@@ -20,7 +21,15 @@ class IliasRepositoryError(RuntimeError):
 
 
 class RepositoryService:
-    CONTAINER_TYPES = {"category", "course", "folder", "group", "root", "item"}
+    CONTAINER_TYPES: ClassVar[set[str]] = {
+        "category",
+        "course",
+        "exercise",
+        "folder",
+        "group",
+        "root",
+        "item",
+    }
 
     def __init__(
         self, settings: Settings, session: requests.Session, auth_service: AuthService
@@ -228,7 +237,13 @@ class RepositoryService:
         title = self._clean(title_node.get_text(" ", strip=True)) if title_node else ""
 
         file_url = self._detect_file_url(soup, ref_id)
-        if not file_url and self._page_looks_like_file_object(soup, ref_id):
+        if (
+            not file_url
+            and self._page_looks_like_file_object(soup, ref_id)
+            # A container page also links to ilObjFileGUI (for its children), so
+            # only guess at a download URL when the page lists no child items.
+            and not self._extract_items(resp.text, current_ref_id=ref_id)
+        ):
             file_url = self._permanent_file_download_url(ref_id)
 
         return {
@@ -359,13 +374,21 @@ class RepositoryService:
         return RepositoryItem(title=title, item_type=item_type, url=url, ref_id=ref_id)
 
     def _detect_file_url(self, soup: BeautifulSoup, ref_id: str) -> str:
+        # A container page also lists download links for the files it contains,
+        # so a match is only this object's download URL when the ref_id agrees.
+        # Otherwise download_file(<folder>) would return the first child file.
+        def matches(href: str) -> bool:
+            if not self._is_download_href(href):
+                return False
+            return self._extract_ref_id(self._normalize_url(href)) == ref_id
+
         for link in soup.find_all(["a", "button"], href=True):
             href = str(link.get("href", "")).strip()
-            if self._is_download_href(href):
+            if matches(href):
                 return self._normalize_url(href)
         for node in soup.find_all(["a", "button"], attrs={"data-action": True}):
             href = str(node.get("data-action", "")).strip()
-            if self._is_download_href(href):
+            if matches(href):
                 return self._normalize_url(href)
         return ""
 
@@ -401,17 +424,15 @@ class RepositoryService:
         last_error: Exception | None = None
         for url in candidates:
             try:
-                resp = self.session.get(
-                    url, timeout=self.settings.timeout_seconds, allow_redirects=True
-                )
-                resp.raise_for_status()
+                resp = self.auth_service.get(url, allow_redirects=True)
             except requests.RequestException as exc:
                 last_error = exc
                 continue
             if not self._looks_like_html_page(resp):
                 return resp
             last_error = IliasRepositoryError(
-                f"Download URL returned HTML instead of a file: {url}"
+                f"{url} served an ILIAS page rather than a file download "
+                f"(ref_id={ref_id} is probably a folder/course, not a file)"
             )
 
         raise IliasRepositoryError(
@@ -420,9 +441,7 @@ class RepositoryService:
 
     def _get(self, url: str, label: str) -> requests.Response:
         try:
-            resp = self.session.get(url, timeout=self.settings.timeout_seconds)
-            resp.raise_for_status()
-            return resp
+            return self.auth_service.get(url)
         except requests.RequestException as exc:
             raise IliasRepositoryError(f"Failed to fetch {label}: {exc}") from exc
 
@@ -472,7 +491,7 @@ class RepositoryService:
     @staticmethod
     def _is_repository_href(href: str) -> bool:
         lower = href.lower()
-        if not href or href.startswith("#") or href.startswith("javascript:"):
+        if not href or href.startswith(("#", "javascript:")):
             return False
         return "ref_id=" in lower or "/go/" in lower or "goto.php?target=" in lower
 
@@ -518,6 +537,14 @@ class RepositoryService:
             return "group"
         if "ilobjforumgui" in text or "forum" in text:
             return "forum"
+        # Exercises drive the submission tools, so they deserve their own type
+        # instead of the generic "item" bucket.
+        if (
+            "ilexercisehandlergui" in text
+            or "ilobjexercisegui" in text
+            or "/go/exc/" in text
+        ):
+            return "exercise"
         return "item"
 
     @staticmethod
@@ -528,14 +555,20 @@ class RepositoryService:
     def _looks_like_pdf(blob: bytes) -> bool:
         return blob[:5] == b"%PDF-"
 
-    @staticmethod
-    def _looks_like_html_page(resp: requests.Response) -> bool:
+    @classmethod
+    def _looks_like_html_page(cls, resp: requests.Response) -> bool:
+        # ILIAS serves every real file download with a Content-Disposition
+        # filename, while its UI and error pages never set the header. Uploaded
+        # .html files are therefore indistinguishable from error pages by
+        # content type alone -- trust the header instead.
+        disposition = resp.headers.get("Content-Disposition", "")
+        if cls._filename_from_content_disposition(disposition):
+            return False
+
         content_type = (resp.headers.get("Content-Type") or "").lower()
         head = resp.content[:200].lstrip().lower()
-        return (
-            "text/html" in content_type
-            or head.startswith(b"<!doctype html")
-            or head.startswith(b"<html")
+        return "text/html" in content_type or head.startswith(
+            (b"<!doctype html", b"<html")
         )
 
     @staticmethod

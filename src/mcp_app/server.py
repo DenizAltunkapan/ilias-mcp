@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from datetime import date
+from datetime import date, datetime
 
 import requests
 from mcp.server.fastmcp import Context, FastMCP
@@ -13,8 +13,8 @@ from core.config import Settings, load_settings
 from services.auth_service import AuthService, IliasAuthError
 from services.calendar_service import CalendarService, IliasCalendarError
 from services.course_service import CourseService, IliasCourseError
-from services.news_service import IliasNewsError, NewsService
 from services.exercise_service import ExerciseService, IliasExerciseError
+from services.news_service import IliasNewsError, NewsService
 from services.repository_service import IliasRepositoryError, RepositoryService
 
 logging.basicConfig(level=logging.INFO)
@@ -144,7 +144,18 @@ async def list_calendar_events(
 ) -> dict[str, object]:
     """List calendar agenda events for a given day (`YYYY-MM-DD`)."""
     app = _app(ctx)
-    day = seed.strip() or date.today().isoformat()
+    day = seed.strip() or datetime.now().astimezone().date().isoformat()
+    try:
+        # ILIAS silently falls back to today for an unparsable seed, which
+        # would return events for the wrong day without any error.
+        date.fromisoformat(day)
+    except ValueError:
+        return {
+            "status": "error",
+            "message": f"seed must be a date in YYYY-MM-DD format, got {day!r}",
+            "seed": day,
+            "events": [],
+        }
     try:
         events = app.calendar_service.list_events(day)
     except (IliasAuthError, IliasCalendarError) as exc:

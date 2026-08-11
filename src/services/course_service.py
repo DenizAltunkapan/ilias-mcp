@@ -23,12 +23,8 @@ class CourseService:
         self.auth_service = auth_service
 
     def list_courses(self) -> list[Course]:
-        self.auth_service.ensure_logged_in()
         try:
-            resp = self.session.get(
-                self.settings.memberships_url, timeout=self.settings.timeout_seconds
-            )
-            resp.raise_for_status()
+            resp = self.auth_service.get(self.settings.memberships_url)
         except requests.RequestException as exc:
             raise IliasCourseError(f"Failed to fetch memberships page: {exc}") from exc
         return self._extract_courses(resp.text)
