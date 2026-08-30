@@ -23,12 +23,10 @@ class CalendarService:
         self.auth_service = auth_service
 
     def list_events(self, seed: str) -> list[CalendarEvent]:
-        self.auth_service.ensure_logged_in()
         url = self.settings.calendar_url(seed)
 
         try:
-            resp = self.session.get(url, timeout=self.settings.timeout_seconds)
-            resp.raise_for_status()
+            resp = self.auth_service.get(url)
         except requests.RequestException as exc:
             raise IliasCalendarError(f"Failed to fetch calendar page: {exc}") from exc
 

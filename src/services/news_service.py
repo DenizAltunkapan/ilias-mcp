@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from urllib.parse import parse_qs, urljoin, urlparse
 import re
+from urllib.parse import parse_qs, urljoin, urlparse
 
 import requests
 from bs4 import BeautifulSoup, Tag
@@ -24,13 +24,8 @@ class NewsService:
         self.auth_service = auth_service
 
     def list_dashboard_news(self, limit: int = 30) -> list[NewsItem]:
-        self.auth_service.ensure_logged_in()
         try:
-            resp = self.session.get(
-                self.settings.dashboard_news_url,
-                timeout=self.settings.timeout_seconds,
-            )
-            resp.raise_for_status()
+            resp = self.auth_service.get(self.settings.dashboard_news_url)
         except requests.RequestException as exc:
             raise IliasNewsError(f"Failed to fetch dashboard news: {exc}") from exc
 

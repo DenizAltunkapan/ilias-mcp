@@ -8,13 +8,13 @@ from services.repository_service import IliasRepositoryError, RepositoryService
 
 __all__ = [
     "AuthService",
-    "IliasAuthError",
-    "CourseService",
-    "IliasCourseError",
     "CalendarService",
+    "CourseService",
+    "IliasAuthError",
     "IliasCalendarError",
-    "NewsService",
+    "IliasCourseError",
     "IliasNewsError",
-    "RepositoryService",
     "IliasRepositoryError",
+    "NewsService",
+    "RepositoryService",
 ]

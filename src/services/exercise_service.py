@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from html import unescape
 from pathlib import Path
-from urllib.parse import urljoin, urlparse, parse_qs
+from urllib.parse import parse_qs, quote, urljoin, urlparse
 
 import requests
 from bs4 import BeautifulSoup
@@ -52,20 +52,59 @@ class ExerciseService:
             deadline = ""
             status = ""
             if row:
-                text = row.get_text(" ", strip=True)
-                m = re.search(r"\d{2}\.\d{2}\.\d{4}(?:\s+\d{2}:\d{2})?", text)
-                if m:
-                    deadline = m.group(0)
-                for word in ("abgegeben", "nicht abgegeben", "bewertet", "submitted"):
-                    if word.lower() in text.lower():
-                        status = word
-                        break
+                text = " ".join(row.get_text(" ", strip=True).split())
+                deadline = self._extract_deadline(text)
+                status = self._extract_status(text)
             assignments.append(
                 ExerciseAssignment(
                     ass_id=ass_id, title=title, deadline=deadline, status=status
                 )
             )
         return assignments
+
+    # ILIAS renders deadlines as "4. Mai 2026, 08:00" or "3. Jul 2026, 23:59",
+    # mixing full and abbreviated month names, so match any month word rather
+    # than enumerating them (which also survives a non-German ILIAS_LANG).
+    _DATE = (
+        r"(?:\d{1,2}\.\s*[^\W\d_]{3,10}\.?\s+\d{4}(?:,\s*\d{1,2}:\d{2})?"
+        r"|\d{2}\.\d{2}\.\d{4}(?:\s+\d{1,2}:\d{2})?)"
+    )
+
+    @classmethod
+    def _extract_deadline(cls, text: str) -> str:
+        """Pull the submission deadline out of an assignment row."""
+        # A row also carries the *own* submission date, so prefer the labelled
+        # deadline and only fall back to the first date on the row.
+        labelled = re.search(
+            rf"(?:Beendet am|Abgabetermin|Abgabe bis|Frist)\D{{0,20}}?({cls._DATE})",
+            text,
+        )
+        if labelled:
+            return labelled.group(1).strip()
+        first = re.search(cls._DATE, text)
+        return first.group(0).strip() if first else ""
+
+    @staticmethod
+    def _extract_status(text: str) -> str:
+        """Classify a row's submission status, negations first.
+
+        "abgegeben" is a substring of "nicht abgegeben", so the negative
+        variants have to be tested before the positive ones.
+        """
+        lowered = text.lower()
+        # Submission state is the more useful answer; grading state only
+        # matters when the row says nothing about a submission.
+        for needle in (
+            "nicht abgegeben",
+            "bereits abgegeben",
+            "abgegeben",
+            "submitted",
+            "nicht bewertet",
+            "bewertet",
+        ):
+            if needle in lowered:
+                return needle
+        return ""
 
     # File submission
 
@@ -87,14 +126,9 @@ class ExerciseService:
         file_id = self._dropzone_upload(upload_handler_url, path)
 
         # Step 3: POST form with the returned identifier
-        payload = {input_name: file_id}
-        post_resp = self.session.post(
-            urljoin(self.settings.ilias_base_url + "/", submit_url),
-            data=payload,
-            timeout=self.settings.timeout_seconds,
-            allow_redirects=True,
+        self._post(
+            submit_url, f"submission for ass_id={ass_id}", data={input_name: file_id}
         )
-        post_resp.raise_for_status()
 
         return {
             "status": "submitted",
@@ -129,7 +163,9 @@ class ExerciseService:
             html,
         )
         if m:
-            upload_handler_url = urljoin(self.settings.ilias_base_url + "/", m.group(1))
+            upload_handler_url = urljoin(
+                self.settings.ilias_base_url + "/", unescape(m.group(1))
+            )
 
         if not upload_handler_url:
             raise IliasExerciseError(
@@ -145,13 +181,9 @@ class ExerciseService:
     def _dropzone_upload(self, upload_url: str, path: Path) -> str:
         """POST file to ILIAS Dropzone handler; return the identifier string."""
         with path.open("rb") as fh:
-            resp = self.session.post(
-                upload_url,
-                files={"file": (path.name, fh)},
-                timeout=self.settings.timeout_seconds,
-                allow_redirects=True,
+            resp = self._post(
+                upload_url, f"upload of {path.name}", files={"file": (path.name, fh)}
             )
-        resp.raise_for_status()
         try:
             data = resp.json()
         except Exception as exc:
@@ -195,13 +227,7 @@ class ExerciseService:
         # Step 1: confirmDeleteDelivered → shows confirmation page
         payload: list[tuple[str, str]] = [("delivered[]", did) for did in delivery_ids]
         payload.append(("cmd[confirmDeleteDelivered]", "Löschen"))
-        confirm_resp = self.session.post(
-            urljoin(self.settings.ilias_base_url + "/", form_action),
-            data=payload,
-            timeout=self.settings.timeout_seconds,
-            allow_redirects=True,
-        )
-        confirm_resp.raise_for_status()
+        confirm_resp = self._post(form_action, "delete confirmation", data=payload)
 
         # Step 2: deleteDelivered → actual deletion
         confirm_action = self._extract_submission_form_action(
@@ -211,18 +237,15 @@ class ExerciseService:
             ("delivered[]", did) for did in delivery_ids
         ]
         delete_payload.append(("cmd[deleteDelivered]", "Löschen"))
-        final_resp = self.session.post(
-            urljoin(self.settings.ilias_base_url + "/", confirm_action),
-            data=delete_payload,
-            timeout=self.settings.timeout_seconds,
-            allow_redirects=True,
-        )
-        final_resp.raise_for_status()
+        final_resp = self._post(confirm_action, "file deletion", data=delete_payload)
 
         remaining = self._extract_submitted_files(final_resp.text)
+        remaining_ids = {entry["delivery_id"] for entry in remaining}
+        actually_deleted = [did for did in delivery_ids if did not in remaining_ids]
         return {
-            "status": "deleted",
-            "deleted_ids": delivery_ids,
+            "status": "deleted" if actually_deleted else "unchanged",
+            "deleted_ids": actually_deleted,
+            "not_deleted_ids": [d for d in delivery_ids if d in remaining_ids],
             "remaining_count": len(remaining),
             "remaining": remaining,
         }
@@ -267,12 +290,11 @@ class ExerciseService:
         return files
 
     def _submission_screen_url(self, ref_id: str, ass_id: str) -> str:
-        assign_url = (
-            f"{self.settings.ilias_base_url}/ilias.php"
-            f"?baseClass=ilrepositorygui&cmdClass=ilAssignmentPresentationGUI"
-            f"&cmd=showOverview&ref_id={ref_id}&ass_id={ass_id}&from_overview=1"
+        # The links carry a dynamic cmdNode and only exist on the exercise
+        # overview; ilAssignmentPresentationGUI redirects there without them.
+        resp = self._get(
+            self._overview_url(ref_id), f"exercise overview {ref_id}/{ass_id}"
         )
-        resp = self._get(assign_url, f"assignment page {ref_id}/{ass_id}")
         screen_raw = self._find_url_with_ass_id(
             resp.text,
             r"ilias\.php\?[^'\"]*cmdClass=ilExSubmissionFileGUI&cmd=submissionScreen[^'\"]*",
@@ -292,7 +314,9 @@ class ExerciseService:
         """Search ILIAS users by name fragment; returns login name + display label."""
         self.auth_service.ensure_logged_in()
         ac_url = self._autocomplete_url(ref_id, ass_id)
-        resp = self._get(ac_url + f"&term={term}", "user autocomplete")
+        # Names contain spaces and umlauts; an unencoded term truncates the
+        # query or injects extra parameters.
+        resp = self._get(f"{ac_url}&term={quote(term)}", "user autocomplete")
         try:
             data = resp.json()
         except Exception as exc:
@@ -318,7 +342,7 @@ class ExerciseService:
             team_resp.text,
         )
         if m:
-            return urljoin(self.settings.ilias_base_url + "/", m.group(0))
+            return urljoin(self.settings.ilias_base_url + "/", unescape(m.group(0)))
         # Fallback using known pattern
         return (
             f"{self.settings.ilias_base_url}/ilias.php"
@@ -344,25 +368,28 @@ class ExerciseService:
             page_resp.text, ref_id, ass_id
         )
 
+        before = {m.user_id for m in self._extract_team_members(page_resp.text)}
+
         payload = {
             "user_login": username,
             "cmd[addUserFromAutoComplete]": "Hinzufügen",
             "rtoken": rtoken,
         }
-        resp = self.session.post(
-            urljoin(self.settings.ilias_base_url + "/", post_url),
-            data=payload,
-            timeout=self.settings.timeout_seconds,
-            allow_redirects=True,
-        )
-        resp.raise_for_status()
+        resp = self._post(post_url, f"team addition of {username}", data=payload)
 
-        # Verify the member now appears on the team page
+        # Only report success when the team actually grew -- ILIAS answers an
+        # ignored POST with HTTP 200 and the unchanged team page.
         updated_members = self._extract_team_members(resp.text)
+        added = {m.user_id for m in updated_members} - before
         names = [m.name for m in updated_members]
         return {
-            "status": "ok",
-            "username_added": username,
+            "status": "ok" if added else "unchanged",
+            "username_added": username if added else "",
+            "message": (
+                f"Added {username} to the team."
+                if added
+                else f"ILIAS did not add {username}; the team is unchanged."
+            ),
             "current_team": ", ".join(names) if names else "(no members listed)",
         }
 
@@ -376,26 +403,63 @@ class ExerciseService:
             page_resp.text, ref_id, ass_id
         )
 
+        before = {m.user_id for m in self._extract_team_members(page_resp.text)}
+
         payload = {
             "id[]": user_id,
             "cmd[confirmRemoveTeamMember]": "Entfernen",
             "rtoken": rtoken,
         }
-        resp = self.session.post(
-            urljoin(self.settings.ilias_base_url + "/", post_url),
-            data=payload,
-            timeout=self.settings.timeout_seconds,
-            allow_redirects=True,
-        )
-        resp.raise_for_status()
+        resp = self._post(post_url, f"team removal of user_id={user_id}", data=payload)
+
+        # confirmRemoveTeamMember only renders a confirmation screen. Submit the
+        # follow-up command it offers, otherwise nothing is ever removed.
+        confirmation = self._find_confirmation_command(resp.text, "removeteammember")
+        if confirmation:
+            confirm_action, cmd_name = confirmation
+            resp = self._post(
+                confirm_action,
+                f"team removal confirmation for user_id={user_id}",
+                data={
+                    "id[]": user_id,
+                    cmd_name: "Entfernen",
+                    "rtoken": self._extract_rtoken(confirm_action) or rtoken,
+                },
+            )
 
         updated_members = self._extract_team_members(resp.text)
+        removed = before - {m.user_id for m in updated_members}
         names = [m.name for m in updated_members]
         return {
-            "status": "ok",
-            "user_id_removed": user_id,
+            "status": "ok" if removed else "unchanged",
+            "user_id_removed": user_id if removed else "",
+            "message": (
+                f"Removed user_id {user_id} from the team."
+                if removed
+                else f"ILIAS did not remove user_id {user_id}; the team is unchanged."
+            ),
             "current_team": ", ".join(names) if names else "(no members listed)",
         }
+
+    @staticmethod
+    def _find_confirmation_command(
+        html: str, action_keyword: str
+    ) -> tuple[str, str] | None:
+        """Find the real command button on an ILIAS confirmation screen.
+
+        Returns (form_action, cmd_field_name), skipping the ``confirm...``
+        command that produced the screen in the first place.
+        """
+        soup = BeautifulSoup(html, "html.parser")
+        for form in soup.find_all("form"):
+            for button in form.find_all(["input", "button"]):
+                name = str(button.get("name", ""))
+                lowered = name.lower()
+                if not lowered.startswith("cmd["):
+                    continue
+                if action_keyword in lowered and "confirm" not in lowered:
+                    return str(form.get("action", "")), name
+        return None
 
     def _extract_team_members(self, html: str) -> list[TeamMember]:
         soup = BeautifulSoup(html, "html.parser")
@@ -426,7 +490,13 @@ class ExerciseService:
         for form in soup.find_all("form"):
             action = str(form.get("action", ""))
             if "TeamGUI" in action or "addUserFromAutoComplete" in str(form):
+                # ILIAS puts the CSRF token either in the action query string
+                # or in a hidden field; without it the POST is silently ignored.
                 rtoken = self._extract_rtoken(action)
+                if not rtoken:
+                    field = form.find("input", attrs={"name": "rtoken"})
+                    if field is not None:
+                        rtoken = str(field.get("value", "")).strip()
                 return action, rtoken
         raise IliasExerciseError(
             f"Team form not found for ref_id={ref_id}, ass_id={ass_id}"
@@ -435,24 +505,23 @@ class ExerciseService:
     # Helpers
 
     def _overview_url(self, ref_id: str) -> str:
+        # Without mode=all ILIAS renders only currently running assignments, so
+        # past and upcoming Übungsblätter would silently be missing.
         return (
             f"{self.settings.ilias_base_url}/ilias.php"
             f"?baseClass=ilrepositorygui&cmdClass=ilObjExerciseGUI"
-            f"&cmd=showOverview&ref_id={ref_id}"
+            f"&cmd=showOverview&ref_id={ref_id}&mode=all&from_overview=1"
         )
 
     def _upload_form_url(self, ref_id: str, ass_id: str) -> str:
-        # Navigate via assignment overview → submission screen → upload form
+        # Navigate via exercise overview → submission screen → upload form
         # to discover the dynamic cmdNode at each step.
-        assign_url = (
-            f"{self.settings.ilias_base_url}/ilias.php"
-            f"?baseClass=ilrepositorygui&cmdClass=ilAssignmentPresentationGUI"
-            f"&cmd=showOverview&ref_id={ref_id}&ass_id={ass_id}&from_overview=1"
+        assign_resp = self._get(
+            self._overview_url(ref_id), f"exercise overview {ref_id}/{ass_id}"
         )
-        assign_resp = self._get(assign_url, f"assignment page {ref_id}/{ass_id}")
 
-        # Find submission screen URL matching the correct ass_id (the page may
-        # contain links to other assignments' screens — pick the right one).
+        # Find submission screen URL matching the correct ass_id (the page
+        # contains links for every assignment — pick the right one).
         screen_raw = self._find_url_with_ass_id(
             assign_resp.text,
             r"ilias\.php\?[^'\"]*cmdClass=ilExSubmissionFileGUI&cmd=submissionScreen[^'\"]*",
@@ -470,18 +539,15 @@ class ExerciseService:
             screen_resp.text,
         )
         if m2:
-            return urljoin(self.settings.ilias_base_url + "/", m2.group(0))
+            return urljoin(self.settings.ilias_base_url + "/", unescape(m2.group(0)))
         # Fallback: replace cmd in the screen URL
         return screen_url.replace("cmd=submissionScreen", "cmd=uploadForm")
 
     def _team_url(self, ref_id: str, ass_id: str) -> str:
-        # Load assignment presentation to discover the dynamic cmdNode for TeamGUI
-        assign_url = (
-            f"{self.settings.ilias_base_url}/ilias.php"
-            f"?baseClass=ilrepositorygui&cmdClass=ilAssignmentPresentationGUI"
-            f"&cmd=showOverview&ref_id={ref_id}&ass_id={ass_id}&from_overview=1"
+        # Load the exercise overview to discover the dynamic cmdNode for TeamGUI
+        resp = self._get(
+            self._overview_url(ref_id), f"exercise overview {ref_id}/{ass_id}"
         )
-        resp = self._get(assign_url, f"assignment page {ref_id}/{ass_id}")
         team_raw = self._find_url_with_ass_id(
             resp.text,
             r"ilias\.php\?[^'\"]*cmdClass=ilExSubmissionTeamGUI&cmd=submissionScreenTeam[^'\"]*",
@@ -522,8 +588,19 @@ class ExerciseService:
 
     def _get(self, url: str, label: str) -> requests.Response:
         try:
-            resp = self.session.get(url, timeout=self.settings.timeout_seconds)
+            return self.auth_service.get(url)
+        except requests.RequestException as exc:
+            raise IliasExerciseError(f"Failed to fetch {label}: {exc}") from exc
+
+    def _post(self, url: str, label: str, **kwargs: object) -> requests.Response:
+        """POST relative to the ILIAS base URL, surfacing transport errors."""
+        kwargs.setdefault("timeout", self.settings.timeout_seconds)
+        kwargs.setdefault("allow_redirects", True)
+        try:
+            resp = self.session.post(
+                urljoin(self.settings.ilias_base_url + "/", url), **kwargs
+            )
             resp.raise_for_status()
             return resp
         except requests.RequestException as exc:
-            raise IliasExerciseError(f"Failed to fetch {label}: {exc}") from exc
+            raise IliasExerciseError(f"Failed to submit {label}: {exc}") from exc

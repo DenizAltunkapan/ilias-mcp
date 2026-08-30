@@ -79,6 +79,36 @@ class AuthService:
         if not self._logged_in:
             self.login()
 
+    def relogin(self) -> str:
+        """Force a fresh authentication, discarding the cached login state."""
+        self._logged_in = False
+        return self.login()
+
+    def get(self, url: str, **kwargs: Any) -> requests.Response:
+        """GET a page, transparently re-authenticating once if the session died.
+
+        ILIAS answers requests on an expired session with HTTP 200 and the
+        login page, so callers would otherwise silently parse the wrong HTML.
+        """
+        self.ensure_logged_in()
+        kwargs.setdefault("timeout", self.settings.timeout_seconds)
+        resp = self.session.get(url, **kwargs)
+        resp.raise_for_status()
+
+        if self._looks_like_login_page(resp):
+            self.relogin()
+            resp = self.session.get(url, **kwargs)
+            resp.raise_for_status()
+        return resp
+
+    @classmethod
+    def _looks_like_login_page(cls, resp: requests.Response) -> bool:
+        if "html" not in (resp.headers.get("Content-Type") or "").lower():
+            return False
+        text = resp.text
+        has_login_form = "doStandardAuthentication" in text or "cmd=force_login" in text
+        return has_login_form and not cls._is_logged_in(text)
+
     @staticmethod
     def _inject_credentials(
         form: Any, payload: dict[str, Any], user: str, password: str
